@@ -4,16 +4,17 @@ const { Pool } = require("pg");
 const cors = require("cors");
 
 const app = express();
-app.use(express.json());
-app.use(cors());
 
-// Verbindet sich über die Render Database URL
+// Behebt CORS-Probleme für alle Anfragen
+app.use(cors({ origin: "*" }));
+app.use(express.json());
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false } // Erforderlich für externe Render-Postgres-Verbindungen
+  ssl: { rejectUnauthorized: false }
 });
 
-// Tabelle beim Start automatisch anlegen (falls nicht vorhanden)
+// Tabelle sicherstellen
 pool.query(`
   CREATE TABLE IF NOT EXISTS highscores (
     id SERIAL PRIMARY KEY,
@@ -21,15 +22,18 @@ pool.query(`
     score INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
-`).catch(err => console.error("Fehler beim Erstellen der Tabelle:", err));
+`).catch(err => console.error("DB-Fehler:", err));
 
 // 1. Highscores abrufen
 app.get("/highscores", async (req, res) => {
   try {
-    const result = await pool.query("SELECT name, score FROM highscores ORDER BY score DESC LIMIT 10");
-    res.json(result.rows);
+    const result = await pool.query(
+      "SELECT name, score FROM highscores ORDER BY score DESC LIMIT 10"
+    );
+    res.json(result.rows); // Gibt ein reines Array zurück
   } catch (err) {
-    res.status(500).json({ error: "Fehler beim Laden der Highscores" });
+    console.error(err);
+    res.status(500).json([]); // Gibt im Fehlerfall ein leeres Array zurück
   }
 });
 
@@ -37,12 +41,19 @@ app.get("/highscores", async (req, res) => {
 app.post("/highscores", async (req, res) => {
   try {
     const { name, score } = req.body;
-    await pool.query("INSERT INTO highscores (name, score) VALUES ($1, $2)", [name, score]);
-    res.json({ message: "Highscore erfolgreich gespeichert!" });
+    if (!name || score === undefined) {
+      return res.status(400).json({ error: "Ungültige Daten" });
+    }
+    await pool.query(
+      "INSERT INTO highscores (name, score) VALUES ($1, $2)",
+      [name, score]
+    );
+    res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: "Fehler beim Speichern" });
+    console.error(err);
+    res.status(500).json({ error: "Speichern fehlgeschlagen" });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server läuft auf Port ${PORT}`));
+app.listen(PORT, () => console.log(`Server läuft auf Port ${PORT}`));{PORT}`));
