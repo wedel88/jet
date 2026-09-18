@@ -5,7 +5,6 @@ const cors = require("cors");
 
 const app = express();
 
-// Behebt CORS-Probleme für alle Anfragen
 app.use(cors({ origin: "*" }));
 app.use(express.json());
 
@@ -14,7 +13,7 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// Tabelle sicherstellen
+// Tabelle beim Start anlegen
 pool.query(`
   CREATE TABLE IF NOT EXISTS highscores (
     id SERIAL PRIMARY KEY,
@@ -24,20 +23,20 @@ pool.query(`
   );
 `).catch(err => console.error("DB-Fehler:", err));
 
-// 1. Highscores abrufen
+// Highscores abrufen
 app.get("/highscores", async (req, res) => {
   try {
     const result = await pool.query(
       "SELECT name, score FROM highscores ORDER BY score DESC LIMIT 10"
     );
-    res.json(result.rows); // Gibt ein reines Array zurück
+    res.json(result.rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json([]); // Gibt im Fehlerfall ein leeres Array zurück
+    res.status(500).json([]);
   }
 });
 
-// 2. Highscore speichern
+// Highscore speichern
 app.post("/highscores", async (req, res) => {
   try {
     const { name, score } = req.body;
@@ -56,4 +55,4 @@ app.post("/highscores", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server läuft auf Port ${PORT}`));{PORT}`));
+app.listen(PORT, () => console.log(`Server läuft auf Port ${PORT}`));
