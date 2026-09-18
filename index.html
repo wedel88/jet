@@ -134,32 +134,36 @@ function spawnBoss(){
 
 // ----------------- HIGHSCORE -----------------
 async function loadHighscores(){
-    try{
+    try {
         const res = await fetch(SERVER_URL);
+        if (!res.ok) throw new Error("Server Antworte mit Status: " + res.status);
         const data = await res.json();
+        
         const tbody = document.querySelector("#highscoreTable tbody");
-        tbody.innerHTML="";
-        data.sort((a,b)=>b.score-a.score).slice(0,10).forEach((entry,index)=>{
-            tbody.innerHTML += `<tr><td>${index+1}</td><td>${entry.name}</td><td>${entry.score}</td></tr>`;
-        });
-    }catch(err){ console.log("Highscore laden fehlgeschlagen"); }
+        tbody.innerHTML = "";
+        
+        if (Array.isArray(data)) {
+            data.forEach((entry, index) => {
+                tbody.innerHTML += `<tr><td>${index+1}</td><td>${entry.name}</td><td>${entry.score}</td></tr>`;
+            });
+        }
+    } catch(err) { 
+        console.error("Highscore laden fehlgeschlagen:", err); 
+    }
 }
 
 async function postHighscore(name, score){
-    try{
-        await fetch(SERVER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,score})});
+    try {
+        const res = await fetch(SERVER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, score })
+        });
+        if (!res.ok) throw new Error("Fehler beim Senden: " + res.status);
         await loadHighscores();
-    }catch(err){ console.log("Highscore posten fehlgeschlagen"); }
-}
-
-function postHighscorePrompt(){ const name = prompt("Name für Highscore:"); if(name) postHighscore(name,score); }
-
-function triggerGameOver(){
-    gameOver = true;
-    setTimeout(() => {
-        alert("Game Over! Score: " + score);
-        postHighscorePrompt();
-    }, 10);
+    } catch(err) { 
+        console.error("Highscore posten fehlgeschlagen:", err); 
+    }
 }
 
 // ----------------- UPDATE -----------------
