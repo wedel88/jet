@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Jet Shooter 2D – Dreieck & Sechseck-Trümmer</title>
+<style>
+body { margin:0; overflow:hidden; background:black; color:white; font-family:Arial; }
+#gameCanvas { background:#000; display:block; margin-left:10px; float:left; border:2px solid white; }
+#ui { position:absolute; top:10px; left:620px; width:250px; }
+#scoreboard { margin-bottom:10px; font-size:18px; }
+#levelOverlay { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:36px; color:yellow; display:none; z-index:10; }
+table { border-collapse: collapse; width:100%; }
+th, td { border:1px solid white; padding:4px; text-align:center; font-size:14px; }
+th { background:#333; }
+td { background:#111; }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="600" height="800"></canvas>
+<div id="ui">
+<div id="scoreboard">
+Score: <span id="score">0</span><br>
+Level: <span id="level">1</span><br>
+Leben: <span id="hp">5</span>
+</div>
+
+<h3>Legende</h3>
+<table>
+<tbody>
+<tr><td style="background:cyan;width:20px;height:20px;"></td><td>Jet (Dreieck)</td></tr>
+<tr><td style="background:yellow;width:20px;height:20px;"></td><td>Schüsse</td></tr>
+<tr><td style="background:gray;width:20px;height:20px;"></td><td>Rocks (6-Ecke)</td></tr>
+<tr><td style="background:orange;width:20px;height:20px;"></td><td>Trümmer (0.5s)</td></tr>
+<tr><td style="background:green;width:20px;height:20px;border-radius:50%;"></td><td>Power-Ups</td></tr>
+<tr><td style="background:red;width:30px;height:30px;"></td><td>Boss</td></tr>
+</tbody>
+</table>
+
+<h3>🏆 Top 10 Highscores</h3>
+<table id="highscoreTable">
+<thead>
+<tr><th>Platz</th><th>Name</th><th>Score</th></tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+
+<div id="levelOverlay"></div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const SERVER_URL = "http://10.30.7.19:3000/highscores";
+
+// ----------------- GAME STATE -----------------
+let jet = {x:270, y:700, w:60, h:60, speed:6, bullets:[], power:1, hp:5, extraBullets:0};
+
+let rockSpawnTimer = 0;
+let powerUpsSpawnedThisLevel = 0;
+let powerUpTimer = 0;
+let bossDefeatedThisLevel = false;
+let bossSpawnedThisLevel = false;
+let extraGivenThisBossLevel = false;
+
+let rocks = [];
+let debris = []; // Für die 6 Dreiecke nach Zerstörung eines Rocks
+let powerUps = [];
+let boss = null;
+let keys = {};
+let score = 0;
+let level = 1;
+let rocksSpawned = 0;
+let shootCooldown = 0;
+let gameOver = false;
+let maxLevels = 21;
+
+// ----------------- LEVEL CONFIG -----------------
+function getRocksThisLevel(l){ return 30 + (l-1)*15; }
+function getRockHP(l){ return 3 + (l-1)*2; }
+function getBossHP(l){ return 50 + (l-1)*25; }
+
+// ----------------- INPUT -----------------
+document.addEventListener("keydown", e=>keys[e.code]=true);
+document.addEventListener("keyup", e=>keys[e.code]=false);
+
+// ----------------- HELPERS -----------------
+function random(min,max){ return Math.random()*(max-min)+min; }
+
+function showLevelOverlay(){
+    const overlay=document.getElementById("levelOverlay");
+    overlay.innerText="Level "+level;
+    overlay.style.display="block";
+    setTimeout(()=>overlay.style.display="none",1000);
+}
+
+function spawnRock(){
+    rocks.push({
+        x: random(20, canvas.width - 60),
+        y: -50,
+        r: 25, // Radius für das Sechseck
+        w: 50,
+        h: 50,
+        hp: getRockHP(level),
+        points: 5,
+        speed: random(2, 3 + level*0.3)
+    });
+    rocksSpawned++;
+}
+
+// Spawned 6 kleine Dreiecke (Trümmer) am Ort des zerstörten Rocks
+function explodeRockIntoDebris(cx, cy){
+    const now = Date.now();
+    for(let i = 0; i < 6; i++){
+        let angle = (Math.PI / 3) * i;
+        debris.push({
+            cx: cx,
+            cy: cy,
+            vx: Math.cos(angle) * 3, // Fliegen nach außen
+            vy: Math.sin(angle) * 3 + 1,
+            size: 12,
+            angle: angle,
+            createdAt: now, // Verfällt nach 500ms
+            hitJet: false
+        });
+    }
+}
+
+function spawnBoss(){
+    if(!boss){
+        boss = {x:250, y:50, w:100, h:100, hp:getBossHP(level), bullets:[], direction:1, speed:2};
+    }
+}
+
+// ----------------- HIGHSCORE -----------------
+async function loadHighscores(){
+    try{
+        const res = await fetch(SERVER_URL);
+        const data = await res.json();
+        const tbody = document.querySelector("#highscoreTable tbody");
+        tbody.innerHTML="";
+        data.sort((a,b)=>b.score-a.score).slice(0,10).forEach((entry,index)=>{
+            tbody.innerHTML += `<tr><td>${index+1}</td><td>${entry.name}</td><td>${entry.score}</td></tr>`;
+        });
+    }catch(err){ console.log("Highscore laden fehlgeschlagen"); }
+}
+
+async function postHighscore(name, score){
+    try{
+        await fetch(SERVER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,score})});
+        await loadHighscores();
+    }catch(err){ console.log("Highscore posten fehlgeschlagen"); }
+}
+
+function postHighscorePrompt(){ const name = prompt("Name für Highscore:"); if(name) postHighscore(name,score); }
+
+function triggerGameOver(){
+    gameOver = true;
+    setTimeout(() => {
+        alert("Game Over! Score: " + score);
+        postHighscorePrompt();
+    }, 10);
+}
+
+// ----------------- UPDATE -----------------
+function update(){
+    if(gameOver) return;
+
+    // Jet Bewegung
+    if(keys["ArrowLeft"] && jet.x>0) jet.x-=jet.speed;
+    if(keys["ArrowRight"] && jet.x<canvas.width-jet.w) jet.x+=jet.speed;
+    if(keys["ArrowUp"] && jet.y>0) jet.y-=jet.speed;
+    if(keys["ArrowDown"] && jet.y<canvas.height-jet.h) jet.y+=jet.speed;
+
+    // Schießen
+    shootCooldown--;
+    if(keys["Space"] && shootCooldown<=0){
+        jet.bullets.push({x:jet.x + jet.w/2 - 5, y:jet.y, w:10, h:20, power:jet.power});
+        if(jet.extraBullets > 0){
+            jet.bullets.push({x:jet.x - 10, y:jet.y + 20, w:10, h:20, power:jet.power});
+            jet.bullets.push({x:jet.x + jet.w, y:jet.y + 20, w:10, h:20, power:jet.power});
+        }
+        shootCooldown=15;
+    }
+
+    // Update Bullets
+    for(let j = jet.bullets.length - 1; j >= 0; j--){
+        let b = jet.bullets[j];
+        b.y -= 10;
+        if(b.y < -20){
+            jet.bullets.splice(j,1);
+        }
+    }
+
+    // Update Rocks (6-Ecke)
+    for(let i = rocks.length - 1; i >= 0; i--){
+        let r = rocks[i];
+        r.y += r.speed;
+
+        let rockDestroyed = false;
+
+        // Bullet Collision
+        for(let j = jet.bullets.length - 1; j >= 0; j--){
+            let b = jet.bullets[j];
+            if(
+                b.x < r.x + r.w &&
+                b.x + b.w > r.x &&
+                b.y < r.y + r.h &&
+                b.y + b.h > r.y
+            ){
+                r.hp -= b.power;
+                jet.bullets.splice(j,1);
+
+                if(r.hp <= 0){
+                    explodeRockIntoDebris(r.x + r.w/2, r.y + r.h/2); // Erzeugt 6 Dreiecke
+                    rocks.splice(i,1);
+                    score += r.points;
+                    rockDestroyed = true;
+                    break;
+                }
+            }
+        }
+
+        if(rockDestroyed) continue;
+
+        // Jet Collision mit Rock (Voller Schaden = 1 HP)
+        if(
+            jet.x < r.x + r.w &&
+            jet.x + jet.w > r.x &&
+            jet.y < r.y + r.h &&
+            jet.y + jet.h > r.y
+        ){
+            jet.hp -= 1;
+            explodeRockIntoDebris(r.x + r.w/2, r.y + r.h/2);
+            rocks.splice(i,1);
+
+            if(jet.hp <= 0){
+                triggerGameOver();
+                return;
+            }
+            continue;
+        }
+
+        // Rock verlässt Screen
+        if(r.y > canvas.height + 40){
+            rocks.splice(i,1);
+        }
+    }
+
+    // Update Debris (6 Dreiecke für 0.5s)
+    const now = Date.now();
+    for(let i = debris.length - 1; i >= 0; i--){
+        let d = debris[i];
+
+        // Nach 500ms (0.5s) auflösen
+        if(now - d.createdAt > 500){
+            debris.splice(i, 1);
+            continue;
+        }
+
+        // Flug-Bewegung
+        d.cx += d.vx;
+        d.cy += d.vy;
+
+        // Kollision mit Jet -> Halbes Leben Schaden (0.5 HP)
+        if(!d.hitJet &&
+           d.cx > jet.x && d.cx < jet.x + jet.w &&
+           d.cy > jet.y && d.cy < jet.y + jet.h){
+            
+            jet.hp -= 0.5;
+            d.hitJet = true; // Verhindert mehrfaches Anrechnen durch dasselbe Dreieck
+
+            if(jet.hp <= 0){
+                triggerGameOver();
+                return;
+            }
+        }
+    }
+
+    // PowerUps
+    for(let i = powerUps.length - 1; i >= 0; i--){
+        let p = powerUps[i];
+        p.y += 1.5;
+        if(jet.x<p.x+p.w && jet.x+jet.w>p.x && jet.y<p.y+p.h && jet.y+jet.h>p.y){
+            if(p.type==="power"){
+                jet.power += 0.3;
+                if(jet.power > 5) jet.power = 5;
+            }
+            if(p.type==="speed"){
+                jet.speed += 0.3;
+                if(jet.speed > 10) jet.speed = 10;
+            }
+            if(p.type==="extra" && !extraGivenThisBossLevel){
+                jet.extraBullets += 1;
+                extraGivenThisBossLevel = true;
+            }
+            powerUps.splice(i,1);
+            continue;
+        }
+        if(p.y>canvas.height) powerUps.splice(i,1);
+    }
+
+    // Spawn Rocks
+    if(!boss && rocksSpawned < getRocksThisLevel(level)){
+        rockSpawnTimer--;
+        if(rockSpawnTimer <= 0){
+            spawnRock();
+            let baseTime = 80 - level*3;
+            if(baseTime < 20) baseTime = 20;
+            rockSpawnTimer = Math.random() * baseTime + 20;
+        }
+    }
+
+    // Spawn PowerUps
+    if(!boss && powerUpsSpawnedThisLevel < 3){
+        powerUpTimer--;
+        if(powerUpTimer <= 0){
+            let types = ["power","speed"];
+            if(level >= 3 && !extraGivenThisBossLevel){
+                types.push("extra");
+            }
+
+            let randomType = types[Math.floor(Math.random()*types.length)];
+            powerUps.push({
+                x:random(50,550),
+                y:-30,
+                w:30,
+                h:30,
+                type:randomType
+            });
+
+            powerUpsSpawnedThisLevel++;
+            powerUpTimer = Math.random()*600 + 300;
+        }
+    }
+
+    // Boss Spawn
+    if(level >= 3 &&
+       rocksSpawned >= getRocksThisLevel(level) &&
+       rocks.length === 0 &&
+       !bossSpawnedThisLevel){
+        spawnBoss();
+        bossSpawnedThisLevel = true;
+        bossDefeatedThisLevel = false;
+    }
+
+    // Boss Update
+    if(boss){
+        boss.x += boss.direction*(2+level*0.2);
+        if(boss.x<0 || boss.x>canvas.width-boss.w) boss.direction*=-1;
+        
+        // Boss Schüsse
+        if(Math.random()<0.02) boss.bullets.push({x:boss.x+boss.w/2-5, y:boss.y+boss.h, w:10, h:20, speed:5});
+        
+        for(let i = boss.bullets.length - 1; i >= 0; i--){
+            let b = boss.bullets[i];
+            b.y += b.speed;
+            
+            if(b.y > canvas.height){
+                boss.bullets.splice(i,1);
+                continue;
+            }
+            
+            if(jet.x<b.x+b.w && jet.x+jet.w>b.x && jet.y<b.y+b.h && jet.y+jet.h>b.y){
+                jet.hp -= 1;
+                boss.bullets.splice(i,1);
+                if(jet.hp<=0){ 
+                    triggerGameOver();
+                    return;
+                }
+            }
+        }
+
+        // Spieler-Schüsse gegen Boss
+        for(let j = jet.bullets.length - 1; j >= 0; j--){
+            let b = jet.bullets[j];
+            if(boss &&
+               b.x < boss.x + boss.w &&
+               b.x + b.w > boss.x &&
+               b.y < boss.y + boss.h &&
+               b.y + b.h > boss.y){
+
+                boss.hp -= b.power;
+                jet.bullets.splice(j,1);
+
+                if(boss.hp <= 0){
+                    score += 200;
+                    boss = null;
+                    bossDefeatedThisLevel = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Level-Fortschritt
+    if(level < 3 && rocksSpawned >= getRocksThisLevel(level) && rocks.length === 0){
+        levelUp();
+    } else if(level >= 3 && rocksSpawned >= getRocksThisLevel(level) && rocks.length === 0 && bossDefeatedThisLevel){
+        levelUp();
+    }
+
+    document.getElementById("score").textContent = score;
+    document.getElementById("level").textContent = level;
+    document.getElementById("hp").textContent = Math.max(0, jet.hp);
+}
+
+function levelUp(){
+    if(level < maxLevels){
+        level++;
+
+        rocksSpawned = 0;
+        powerUpsSpawnedThisLevel = 0;
+        rockSpawnTimer = 0;
+        powerUpTimer = Math.random() * 200 + 100;
+
+        bossSpawnedThisLevel = false;
+        bossDefeatedThisLevel = false;
+        extraGivenThisBossLevel = false;
+
+        showLevelOverlay();
+    } else {
+        triggerGameOver();
+    }
+}
+
+// ----------------- DRAW -----------------
+function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // 1. Draw Jet als Dreieck (Spitze nach vorne/oben)
+    ctx.fillStyle = "cyan";
+    ctx.beginPath();
+    ctx.moveTo(jet.x + jet.w / 2, jet.y);                // Spitze (oben-mitte)
+    ctx.lineTo(jet.x + jet.w, jet.y + jet.h);            // Ecke unten rechts
+    ctx.lineTo(jet.x + jet.w / 2, jet.y + jet.h - 15);   // Basis-Einrückung nach innen
+    ctx.lineTo(jet.x, jet.y + jet.h);                    // Ecke unten links
+    ctx.closePath();
+    ctx.fill();
+
+    // 2. Draw Bullets
+    ctx.fillStyle = "yellow";
+    jet.bullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
+
+    // 3. Draw Rocks als Sechsecke (6-Ecke)
+    ctx.fillStyle = "gray";
+    rocks.forEach(r => {
+        let cx = r.x + r.w/2;
+        let cy = r.y + r.h/2;
+        let radius = r.r;
+
+        ctx.beginPath();
+        for(let i = 0; i < 6; i++){
+            let a = (Math.PI / 3) * i;
+            let x = cx + radius * Math.cos(a);
+            let y = cy + radius * Math.sin(a);
+            if(i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+    });
+
+    // 4. Draw Debris (6 kleine Dreiecke nach Zerstörung)
+    ctx.fillStyle = "orange";
+    debris.forEach(d => {
+        ctx.save();
+        ctx.translate(d.cx, d.cy);
+        ctx.rotate(d.angle);
+
+        ctx.beginPath();
+        ctx.moveTo(0, -d.size);
+        ctx.lineTo(d.size / 2, d.size / 2);
+        ctx.lineTo(-d.size / 2, d.size / 2);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+    });
+
+    // 5. Draw Power-Ups
+    ctx.fillStyle = "green";
+    powerUps.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x + p.w/2, p.y + p.h/2, p.w/2, 0, Math.PI*2);
+        ctx.fill();
+    });
+
+    // 6. Draw Boss
+    if(boss){
+        ctx.fillStyle = "red";
+        ctx.fillRect(boss.x, boss.y, boss.w, boss.h);
+        ctx.fillStyle = "orange";
+        boss.bullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
+    }
+}
+
+// ----------------- LOOP -----------------
+function loop(){
+    update(); 
+    draw(); 
+    if(!gameOver) requestAnimationFrame(loop);
+}
+
+loop();
+loadHighscores();
+</script>
+</body>
+</html>
