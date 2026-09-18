@@ -13,11 +13,14 @@ table { border-collapse: collapse; width:100%; }
 th, td { border:1px solid white; padding:4px; text-align:center; font-size:14px; }
 th { background:#333; }
 td { background:#111; }
+#restartBtn { display:none; position:absolute; top:50%; left:200px; transform:translateY(-50%); padding:15px 25px; font-size:18px; cursor:pointer; background:green; color:white; border:2px solid white; border-radius:5px; z-index:20; }
 </style>
 </head>
 <body>
 
 <canvas id="gameCanvas" width="600" height="800"></canvas>
+<button id="restartBtn" onclick="restartGame()">Erneut spielen</button>
+
 <div id="ui">
 <div id="scoreboard">
 Score: <span id="score">0</span><br>
@@ -64,7 +67,7 @@ let bossSpawnedThisLevel = false;
 let extraGivenThisBossLevel = false;
 
 let rocks = [];
-let debris = []; // Für die 6 Dreiecke nach Zerstörung eines Rocks
+let debris = [];
 let powerUps = [];
 let boss = null;
 let keys = {};
@@ -98,7 +101,7 @@ function spawnRock(){
     rocks.push({
         x: random(20, canvas.width - 60),
         y: -50,
-        r: 25, // Radius für das Sechseck
+        r: 25,
         w: 50,
         h: 50,
         hp: getRockHP(level),
@@ -108,7 +111,6 @@ function spawnRock(){
     rocksSpawned++;
 }
 
-// Spawned 6 kleine Dreiecke (Trümmer) am Ort des zerstörten Rocks
 function explodeRockIntoDebris(cx, cy){
     const now = Date.now();
     for(let i = 0; i < 6; i++){
@@ -116,11 +118,11 @@ function explodeRockIntoDebris(cx, cy){
         debris.push({
             cx: cx,
             cy: cy,
-            vx: Math.cos(angle) * 3, // Fliegen nach außen
+            vx: Math.cos(angle) * 3,
             vy: Math.sin(angle) * 3 + 1,
             size: 12,
             angle: angle,
-            createdAt: now, // Verfällt nach 500ms
+            createdAt: now,
             hitJet: false
         });
     }
@@ -136,7 +138,7 @@ function spawnBoss(){
 async function loadHighscores(){
     try {
         const res = await fetch(SERVER_URL);
-        if (!res.ok) throw new Error("Server Antworte mit Status: " + res.status);
+        if (!res.ok) throw new Error("Server-Fehler: " + res.status);
         const data = await res.json();
         
         const tbody = document.querySelector("#highscoreTable tbody");
@@ -154,29 +156,67 @@ async function loadHighscores(){
 
 async function postHighscore(name, score){
     try {
-        const res = await fetch(SERVER_URL, {
+        await fetch(SERVER_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ name, score })
         });
-        if (!res.ok) throw new Error("Fehler beim Senden: " + res.status);
         await loadHighscores();
     } catch(err) { 
         console.error("Highscore posten fehlgeschlagen:", err); 
     }
 }
 
+function postHighscorePrompt(){ 
+    const name = prompt("Game Over! Gib deinen Namen für den Highscore ein:"); 
+    if (name) {
+        postHighscore(name, score);
+    }
+}
+
+function triggerGameOver(){
+    if (gameOver) return;
+    gameOver = true;
+    
+    setTimeout(() => {
+        postHighscorePrompt();
+        document.getElementById("restartBtn").style.display = "block";
+    }, 100);
+}
+
+// ----------------- RESTART -----------------
+function restartGame(){
+    score = 0;
+    level = 1;
+    gameOver = false;
+    rocksSpawned = 0;
+    shootCooldown = 0;
+    
+    jet = {x:270, y:700, w:60, h:60, speed:6, bullets:[], power:1, hp:5, extraBullets:0};
+    rocks = [];
+    debris = [];
+    powerUps = [];
+    boss = null;
+    
+    bossSpawnedThisLevel = false;
+    bossDefeatedThisLevel = false;
+    extraGivenThisBossLevel = false;
+    powerUpsSpawnedThisLevel = 0;
+
+    document.getElementById("restartBtn").style.display = "none";
+    
+    loop();
+}
+
 // ----------------- UPDATE -----------------
 function update(){
     if(gameOver) return;
 
-    // Jet Bewegung
     if(keys["ArrowLeft"] && jet.x>0) jet.x-=jet.speed;
     if(keys["ArrowRight"] && jet.x<canvas.width-jet.w) jet.x+=jet.speed;
     if(keys["ArrowUp"] && jet.y>0) jet.y-=jet.speed;
     if(keys["ArrowDown"] && jet.y<canvas.height-jet.h) jet.y+=jet.speed;
 
-    // Schießen
     shootCooldown--;
     if(keys["Space"] && shootCooldown<=0){
         jet.bullets.push({x:jet.x + jet.w/2 - 5, y:jet.y, w:10, h:20, power:jet.power});
@@ -187,7 +227,6 @@ function update(){
         shootCooldown=15;
     }
 
-    // Update Bullets
     for(let j = jet.bullets.length - 1; j >= 0; j--){
         let b = jet.bullets[j];
         b.y -= 10;
@@ -196,14 +235,11 @@ function update(){
         }
     }
 
-    // Update Rocks (6-Ecke)
     for(let i = rocks.length - 1; i >= 0; i--){
         let r = rocks[i];
         r.y += r.speed;
-
         let rockDestroyed = false;
 
-        // Bullet Collision
         for(let j = jet.bullets.length - 1; j >= 0; j--){
             let b = jet.bullets[j];
             if(
@@ -216,7 +252,7 @@ function update(){
                 jet.bullets.splice(j,1);
 
                 if(r.hp <= 0){
-                    explodeRockIntoDebris(r.x + r.w/2, r.y + r.h/2); // Erzeugt 6 Dreiecke
+                    explodeRockIntoDebris(r.x + r.w/2, r.y + r.h/2);
                     rocks.splice(i,1);
                     score += r.points;
                     rockDestroyed = true;
@@ -227,7 +263,6 @@ function update(){
 
         if(rockDestroyed) continue;
 
-        // Jet Collision mit Rock (Voller Schaden = 1 HP)
         if(
             jet.x < r.x + r.w &&
             jet.x + jet.w > r.x &&
@@ -245,34 +280,29 @@ function update(){
             continue;
         }
 
-        // Rock verlässt Screen
         if(r.y > canvas.height + 40){
             rocks.splice(i,1);
         }
     }
 
-    // Update Debris (6 Dreiecke für 0.5s)
     const now = Date.now();
     for(let i = debris.length - 1; i >= 0; i--){
         let d = debris[i];
 
-        // Nach 500ms (0.5s) auflösen
         if(now - d.createdAt > 500){
             debris.splice(i, 1);
             continue;
         }
 
-        // Flug-Bewegung
         d.cx += d.vx;
         d.cy += d.vy;
 
-        // Kollision mit Jet -> Halbes Leben Schaden (0.5 HP)
         if(!d.hitJet &&
            d.cx > jet.x && d.cx < jet.x + jet.w &&
            d.cy > jet.y && d.cy < jet.y + jet.h){
             
             jet.hp -= 0.5;
-            d.hitJet = true; // Verhindert mehrfaches Anrechnen durch dasselbe Dreieck
+            d.hitJet = true;
 
             if(jet.hp <= 0){
                 triggerGameOver();
@@ -281,7 +311,6 @@ function update(){
         }
     }
 
-    // PowerUps
     for(let i = powerUps.length - 1; i >= 0; i--){
         let p = powerUps[i];
         p.y += 1.5;
@@ -304,7 +333,6 @@ function update(){
         if(p.y>canvas.height) powerUps.splice(i,1);
     }
 
-    // Spawn Rocks
     if(!boss && rocksSpawned < getRocksThisLevel(level)){
         rockSpawnTimer--;
         if(rockSpawnTimer <= 0){
@@ -315,7 +343,6 @@ function update(){
         }
     }
 
-    // Spawn PowerUps
     if(!boss && powerUpsSpawnedThisLevel < 3){
         powerUpTimer--;
         if(powerUpTimer <= 0){
@@ -338,7 +365,6 @@ function update(){
         }
     }
 
-    // Boss Spawn
     if(level >= 3 &&
        rocksSpawned >= getRocksThisLevel(level) &&
        rocks.length === 0 &&
@@ -348,12 +374,10 @@ function update(){
         bossDefeatedThisLevel = false;
     }
 
-    // Boss Update
     if(boss){
         boss.x += boss.direction*(2+level*0.2);
         if(boss.x<0 || boss.x>canvas.width-boss.w) boss.direction*=-1;
         
-        // Boss Schüsse
         if(Math.random()<0.02) boss.bullets.push({x:boss.x+boss.w/2-5, y:boss.y+boss.h, w:10, h:20, speed:5});
         
         for(let i = boss.bullets.length - 1; i >= 0; i--){
@@ -375,7 +399,6 @@ function update(){
             }
         }
 
-        // Spieler-Schüsse gegen Boss
         for(let j = jet.bullets.length - 1; j >= 0; j--){
             let b = jet.bullets[j];
             if(boss &&
@@ -397,7 +420,6 @@ function update(){
         }
     }
 
-    // Level-Fortschritt
     if(level < 3 && rocksSpawned >= getRocksThisLevel(level) && rocks.length === 0){
         levelUp();
     } else if(level >= 3 && rocksSpawned >= getRocksThisLevel(level) && rocks.length === 0 && bossDefeatedThisLevel){
@@ -432,21 +454,18 @@ function levelUp(){
 function draw(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    // 1. Draw Jet als Dreieck (Spitze nach vorne/oben)
     ctx.fillStyle = "cyan";
     ctx.beginPath();
-    ctx.moveTo(jet.x + jet.w / 2, jet.y);                // Spitze (oben-mitte)
-    ctx.lineTo(jet.x + jet.w, jet.y + jet.h);            // Ecke unten rechts
-    ctx.lineTo(jet.x + jet.w / 2, jet.y + jet.h - 15);   // Basis-Einrückung nach innen
-    ctx.lineTo(jet.x, jet.y + jet.h);                    // Ecke unten links
+    ctx.moveTo(jet.x + jet.w / 2, jet.y);
+    ctx.lineTo(jet.x + jet.w, jet.y + jet.h);
+    ctx.lineTo(jet.x + jet.w / 2, jet.y + jet.h - 15);
+    ctx.lineTo(jet.x, jet.y + jet.h);
     ctx.closePath();
     ctx.fill();
 
-    // 2. Draw Bullets
     ctx.fillStyle = "yellow";
     jet.bullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
 
-    // 3. Draw Rocks als Sechsecke (6-Ecke)
     ctx.fillStyle = "gray";
     rocks.forEach(r => {
         let cx = r.x + r.w/2;
@@ -465,7 +484,6 @@ function draw(){
         ctx.fill();
     });
 
-    // 4. Draw Debris (6 kleine Dreiecke nach Zerstörung)
     ctx.fillStyle = "orange";
     debris.forEach(d => {
         ctx.save();
@@ -482,7 +500,6 @@ function draw(){
         ctx.restore();
     });
 
-    // 5. Draw Power-Ups
     ctx.fillStyle = "green";
     powerUps.forEach(p => {
         ctx.beginPath();
@@ -490,7 +507,6 @@ function draw(){
         ctx.fill();
     });
 
-    // 6. Draw Boss
     if(boss){
         ctx.fillStyle = "red";
         ctx.fillRect(boss.x, boss.y, boss.w, boss.h);
