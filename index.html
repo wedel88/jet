@@ -184,8 +184,12 @@ function triggerGameOver(){
     }, 100);
 }
 
-// ----------------- RESTART -----------------
+// ----------------- NEUSTART FUNCTION -----------------
 function restartGame(){
+    // 1. Tastatur-Speicher komplett leeren (behebt den Bug)
+    keys = {};
+
+    // 2. Spielwerte zurücksetzen
     score = 0;
     level = 1;
     gameOver = false;
@@ -203,8 +207,11 @@ function restartGame(){
     extraGivenThisBossLevel = false;
     powerUpsSpawnedThisLevel = 0;
 
+    // 3. UI anpassen und Highscores neu laden
     document.getElementById("restartBtn").style.display = "none";
+    loadHighscores();
     
+    // 4. Spielschleife neu starten
     loop();
 }
 
