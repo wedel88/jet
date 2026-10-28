@@ -10,7 +10,12 @@ app.use(express.json());
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+  ssl: {
+    rejectUnauthorized: false
+  },
+  // Füge diese Timeouts hinzu, damit die Verbindung nicht sofort stirbt
+  connectionTimeoutMillis: 5000,
+  idleTimeoutMillis: 30000
 });
 
 // Tabelle beim Start anlegen
