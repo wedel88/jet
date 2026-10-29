@@ -98,6 +98,18 @@ function showLevelOverlay(){
     setTimeout(()=>overlay.style.display="none",1000);
 }
 
+// ---- triggerGameOver ----
+function triggerGameOver(){
+    gameOver = true;
+    document.getElementById("restartBtn").style.display = "block";
+    
+    // Optional: Highscore beim Game Over direkt speichern (falls gewünscht)
+    let playerName = prompt("Game Over! Gib deinen Namen für den Highscore ein:", "Spieler");
+    if(playerName){
+        saveHighScore(playerName, score);
+    }
+}
+
 function spawnRock(){
     rocks.push({
         x: random(20, canvas.width - 60),
@@ -135,18 +147,17 @@ function spawnBoss(){
     }
 }
 
-// ----------------- HIGHSCORE -----------------
-// 1. Highscores laden
+// ----------------- HIGHSCORE (Mit X-Access-Key für den Access Key) -----------------
 async function loadHighscores() {
   try {
     const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
       headers: {
-        "X-Master-Key": API_KEY
+        "X-Access-Key": API_KEY
       }
     });
+    if(!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const data = await response.json();
     
-    // Die Highscores auslesen und im HTML anzeigen
     const highscores = data.record.highscores || [];
     renderHighscoreTable(highscores);
   } catch (err) {
@@ -154,46 +165,46 @@ async function loadHighscores() {
   }
 }
 
-// 2. Highscore speichern
-async function saveHighScore(name, score) {
+async function saveHighScore(name, scoreVal) {
   try {
-    // Erst aktuelle Liste holen
     const res = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
-      headers: { "X-Master-Key": API_KEY }
+      headers: { "X-Access-Key": API_KEY }
     });
     const currentData = await res.json();
     let highscores = currentData.record.highscores || [];
 
-    // Neuen Score hinzufügen und sortieren (höchste zuerst)
-    highscores.push({ name, score });
+    highscores.push({ name: name, score: scoreVal });
     highscores.sort((a, b) => b.score - a.score);
-    
-    // Nur die Top 10 behalten
     highscores = highscores.slice(0, 10);
 
-    // Neue Liste an JSONBin.io schicken (überschreiben)
     await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        "X-Master-Key": API_KEY
+        "X-Access-Key": API_KEY
       },
       body: JSON.stringify({ highscores: highscores })
     });
 
-    // Tabelle aktualisieren
     loadHighscores();
   } catch (err) {
     console.error("Speichern fehlgeschlagen:", err);
   }
 }
 
+function renderHighscoreTable(highscores){
+    const tbody = document.querySelector("#highscoreTable tbody");
+    tbody.innerHTML = "";
+    highscores.forEach((entry, index) => {
+        let tr = document.createElement("tr");
+        tr.innerHTML = `<td>${index + 1}</td><td>${entry.name}</td><td>${entry.score}</td>`;
+        tbody.appendChild(tr);
+    });
+}
+
 // ----------------- NEUSTART FUNCTION -----------------
 function restartGame(){
-    // 1. Tastatur-Speicher komplett leeren (behebt den Bug)
     keys = {};
-
-    // 2. Spielwerte zurücksetzen
     score = 0;
     level = 1;
     gameOver = false;
@@ -211,11 +222,8 @@ function restartGame(){
     extraGivenThisBossLevel = false;
     powerUpsSpawnedThisLevel = 0;
 
-    // 3. UI anpassen und Highscores neu laden
     document.getElementById("restartBtn").style.display = "none";
     loadHighscores();
-    
-    // 4. Spielschleife neu starten
     loop();
 }
 
@@ -445,16 +453,13 @@ function update(){
 function levelUp(){
     if(level < maxLevels){
         level++;
-
         rocksSpawned = 0;
         powerUpsSpawnedThisLevel = 0;
         rockSpawnTimer = 0;
         powerUpTimer = Math.random() * 200 + 100;
-
         bossSpawnedThisLevel = false;
         bossDefeatedThisLevel = false;
         extraGivenThisBossLevel = false;
-
         showLevelOverlay();
     } else {
         triggerGameOver();
@@ -533,8 +538,9 @@ function loop(){
     if(!gameOver) requestAnimationFrame(loop);
 }
 
-loop();
+// Start
 loadHighscores();
+loop();
 </script>
 </body>
 </html>
