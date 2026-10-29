@@ -54,7 +54,8 @@ Leben: <span id="hp">5</span>
 <script>
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
-const SERVER_URL = "https://jet-qfaf.onrender.com/highscores";
+const BIN_ID = "6ae2f9c2ac6210605a5b3585";
+const API_KEY = "$2a$10$aKoAlo3J2kh.EjvCX2XqMuCvNmueGcBUKVhnEP.3UvqZQMne.1Dnq";
 
 // ----------------- GAME STATE -----------------
 let jet = {x:270, y:700, w:60, h:60, speed:6, bullets:[], power:1, hp:5, extraBullets:0};
@@ -135,53 +136,56 @@ function spawnBoss(){
 }
 
 // ----------------- HIGHSCORE -----------------
-async function loadHighscores(){
-    try {
-        const res = await fetch(SERVER_URL);
-        if (!res.ok) throw new Error("Server-Fehler: " + res.status);
-        const data = await res.json();
-        
-        const tbody = document.querySelector("#highscoreTable tbody");
-        tbody.innerHTML = "";
-        
-        if (Array.isArray(data)) {
-            data.forEach((entry, index) => {
-                tbody.innerHTML += `<tr><td>${index+1}</td><td>${entry.name}</td><td>${entry.score}</td></tr>`;
-            });
-        }
-    } catch(err) { 
-        console.error("Highscore laden fehlgeschlagen:", err); 
-    }
-}
-
-async function postHighscore(name, score){
-    try {
-        await fetch(SERVER_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, score })
-        });
-        await loadHighscores();
-    } catch(err) { 
-        console.error("Highscore posten fehlgeschlagen:", err); 
-    }
-}
-
-function postHighscorePrompt(){ 
-    const name = prompt("Game Over! Gib deinen Namen für den Highscore ein:"); 
-    if (name) {
-        postHighscore(name, score);
-    }
-}
-
-function triggerGameOver(){
-    if (gameOver) return;
-    gameOver = true;
+// 1. Highscores laden
+async function loadHighscores() {
+  try {
+    const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
+      headers: {
+        "X-Master-Key": API_KEY
+      }
+    });
+    const data = await response.json();
     
-    setTimeout(() => {
-        postHighscorePrompt();
-        document.getElementById("restartBtn").style.display = "block";
-    }, 100);
+    // Die Highscores auslesen und im HTML anzeigen
+    const highscores = data.record.highscores || [];
+    renderHighscoreTable(highscores);
+  } catch (err) {
+    console.error("Highscore laden fehlgeschlagen:", err);
+  }
+}
+
+// 2. Highscore speichern
+async function saveHighScore(name, score) {
+  try {
+    // Erst aktuelle Liste holen
+    const res = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
+      headers: { "X-Master-Key": API_KEY }
+    });
+    const currentData = await res.json();
+    let highscores = currentData.record.highscores || [];
+
+    // Neuen Score hinzufügen und sortieren (höchste zuerst)
+    highscores.push({ name, score });
+    highscores.sort((a, b) => b.score - a.score);
+    
+    // Nur die Top 10 behalten
+    highscores = highscores.slice(0, 10);
+
+    // Neue Liste an JSONBin.io schicken (überschreiben)
+    await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Master-Key": API_KEY
+      },
+      body: JSON.stringify({ highscores: highscores })
+    });
+
+    // Tabelle aktualisieren
+    loadHighscores();
+  } catch (err) {
+    console.error("Speichern fehlgeschlagen:", err);
+  }
 }
 
 // ----------------- NEUSTART FUNCTION -----------------
