@@ -1,6 +1,6 @@
 require("dotenv").config();
 const express = require("express");
-const { Pool } = require("pg");
+const { createClient } = require("@supabase/supabase-js");
 const cors = require("cors");
 
 const app = express();
@@ -8,35 +8,25 @@ const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json());
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  },
-  // Füge diese Timeouts hinzu, damit die Verbindung nicht sofort stirbt
-  connectionTimeoutMillis: 5000,
-  idleTimeoutMillis: 30000
-});
+// Supabase-Client mit den Daten aus deinem Dashboard initialisieren
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY; 
 
-// Tabelle beim Start anlegen
-pool.query(`
-  CREATE TABLE IF NOT EXISTS highscores (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL,
-    score INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  );
-`).catch(err => console.error("DB-Fehler:", err));
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Highscores abrufen
 app.get("/highscores", async (req, res) => {
   try {
-    const result = await pool.query(
-      "SELECT name, score FROM highscores ORDER BY score DESC LIMIT 10"
-    );
-    res.json(result.rows);
+    const { data, error } = await supabase
+      .from("highscores")
+      .select("name, score")
+      .order("score", { ascending: false })
+      .limit(10);
+
+    if (error) throw error;
+    res.json(data);
   } catch (err) {
-    console.error(err);
+    console.error("Fehler beim Laden:", err);
     res.status(500).json([]);
   }
 });
@@ -48,13 +38,15 @@ app.post("/highscores", async (req, res) => {
     if (!name || score === undefined) {
       return res.status(400).json({ error: "Ungültige Daten" });
     }
-    await pool.query(
-      "INSERT INTO highscores (name, score) VALUES ($1, $2)",
-      [name, score]
-    );
+
+    const { error } = await supabase
+      .from("highscores")
+      .insert([{ name, score }]);
+
+    if (error) throw error;
     res.json({ success: true });
   } catch (err) {
-    console.error(err);
+    console.error("Fehler beim Speichern:", err);
     res.status(500).json({ error: "Speichern fehlgeschlagen" });
   }
 });
