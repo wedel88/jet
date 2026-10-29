@@ -14,6 +14,7 @@ th, td { border:1px solid white; padding:4px; text-align:center; font-size:14px;
 th { background:#333; }
 td { background:#111; }
 #restartBtn { display:none; position:absolute; top:50%; left:200px; transform:translateY(-50%); padding:15px 25px; font-size:18px; cursor:pointer; background:green; color:white; border:2px solid white; border-radius:5px; z-index:20; }
+.control-box { margin-top: 15px; padding: 10px; background: #111; border: 1px solid white; font-size: 13px; line-height: 1.4; }
 </style>
 </head>
 <body>
@@ -39,6 +40,12 @@ Leben: <span id="hp">5</span>
 <tr><td style="background:red;width:30px;height:30px;"></td><td>Boss</td></tr>
 </tbody>
 </table>
+
+<div class="control-box">
+  <strong>🎮 Steuerung:</strong><br>
+  • <b>Pfeiltasten:</b> Bewegen<br>
+  • <b>Leertaste:</b> Schießen
+</div>
 
 <h3>🏆 Top 10 Highscores</h3>
 <table id="highscoreTable">
