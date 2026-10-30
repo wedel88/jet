@@ -6,18 +6,42 @@
 <title>Jet Shooter 2D – Dreieck & Sechseck-Trümmer</title>
 <style>
 body { margin:0; overflow:hidden; background:black; color:white; font-family:Arial; touch-action: none; }
-#gameCanvas { background:#000; display:block; margin: 0 auto; border:2px solid white; max-width: 100%; height: auto; }
-#ui { position:absolute; top:10px; right:10px; width:220px; background: rgba(0,0,0,0.8); padding: 5px; border-radius: 5px; }
+#gameContainer { position: relative; width: max-content; margin: 0 auto; }
+#gameCanvas { background:#000; display:block; border:2px solid white; max-width: 100vw; height: auto; }
+
+#ui { position:absolute; top:10px; left:620px; width:220px; background: rgba(0,0,0,0.8); padding: 5px; border-radius: 5px; }
 #scoreboard { margin-bottom:10px; font-size:16px; }
 #levelOverlay { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:36px; color:yellow; display:none; z-index:10; }
 table { border-collapse: collapse; width:100%; }
 th, td { border:1px solid white; padding:2px; text-align:center; font-size:12px; }
 th { background:#333; }
 td { background:#111; }
-#restartBtn { display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); padding:15px 25px; font-size:18px; cursor:pointer; background:green; color:white; border:2px solid white; border-radius:5px; z-index:20; }
 .control-box { margin-top: 10px; padding: 5px; background: #111; border: 1px solid white; font-size: 11px; line-height: 1.3; }
 
-/* --- Virtueller Joystick & Feuer-Button (Nur Mobil) --- */
+/* --- GameOver & Highscore Modal Overlay --- */
+#gameOverModal {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80%;
+    max-width: 400px;
+    background: rgba(10, 10, 10, 0.95);
+    border: 2px solid yellow;
+    border-radius: 10px;
+    padding: 15px;
+    text-align: center;
+    z-index: 50;
+    box-shadow: 0 0 20px rgba(255, 255, 0, 0.4);
+}
+#gameOverModal h2 { color: red; margin-top: 0; }
+#nameInputSection { margin-bottom: 15px; }
+#nameInputSection input { padding: 8px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc; width: 60%; text-align: center; }
+#saveNameBtn { padding: 8px 12px; font-size: 14px; background: gold; color: black; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; }
+#restartModalBtn { padding: 12px 20px; font-size: 16px; cursor: pointer; background: green; color: white; border: 2px solid white; border-radius: 5px; margin-top: 10px; font-weight: bold; width: 100%; }
+
+/* --- Mobile Touch Controls --- */
 #touchShootBtn {
     position: fixed;
     bottom: 30px;
@@ -37,9 +61,7 @@ td { background:#111; }
     user-select: none;
     touch-action: manipulation;
 }
-#touchShootBtn:active {
-    background: rgba(255, 0, 0, 0.8);
-}
+#touchShootBtn:active { background: rgba(255, 0, 0, 0.8); }
 
 #joystickBase {
     position: fixed;
@@ -75,49 +97,68 @@ td { background:#111; }
 </head>
 <body>
 
-<canvas id="gameCanvas" width="600" height="800"></canvas>
-<button id="restartBtn" onclick="restartGame()">Erneut spielen</button>
+<div id="gameContainer">
+    <canvas id="gameCanvas" width="600" height="800"></canvas>
+    
+    <!-- Game Over & Highscore Overlay Fenster -->
+    <div id="gameOverModal">
+        <h2>GAME OVER</h2>
+        <div id="nameInputSection">
+            <p style="margin:5px 0;">Dein Score: <b id="finalScore" style="color:yellow;">0</b></p>
+            <input type="text" id="playerNameInput" placeholder="Dein Name" maxlength="12">
+            <button id="saveNameBtn" onclick="submitScore()">Speichern</button>
+        </div>
+        
+        <h3>🏆 Highscores</h3>
+        <table id="modalHighscoreTable">
+            <thead>
+                <tr><th>Platz</th><th>Name</th><th>Score</th></tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        
+        <button id="restartModalBtn" onclick="restartGame()">Erneut spielen 🔄</button>
+    </div>
 
-<div id="joystickBase">
-    <div id="joystickStick"></div>
+    <div id="ui">
+        <div id="scoreboard">
+            Score: <span id="score">0</span><br>
+            Level: <span id="level">1</span><br>
+            Leben: <span id="hp">5</span>
+        </div>
+
+        <h3>Legende</h3>
+        <table>
+            <tbody>
+                <tr><td style="background:cyan;width:20px;height:20px;"></td><td>Jet (Dreieck)</td></tr>
+                <tr><td style="background:yellow;width:20px;height:20px;"></td><td>Schüsse</td></tr>
+                <tr><td style="background:gray;width:20px;height:20px;"></td><td>Rocks (6-Ecke)</td></tr>
+                <tr><td style="background:orange;width:20px;height:20px;"></td><td>Trümmer (0.5s)</td></tr>
+                <tr><td style="background:green;width:20px;height:20px;border-radius:50%;"></td><td>Power-Ups</td></tr>
+                <tr><td style="background:red;width:30px;height:30px;"></td><td>Boss</td></tr>
+            </tbody>
+        </table>
+
+        <div class="control-box">
+          <strong>🎮 Steuerung:</strong><br>
+          • <b>PC:</b> Pfeiltasten + Leertaste<br>
+          • <b>Handy:</b> Joystick links + Feuer-Button rechts
+        </div>
+
+        <h3>🏆 Top 10 Highscores</h3>
+        <table id="highscoreTable">
+            <thead>
+                <tr><th>Platz</th><th>Name</th><th>Score</th></tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <div id="levelOverlay"></div>
 </div>
+
+<div id="joystickBase"><div id="joystickStick"></div></div>
 <div id="touchShootBtn">FEUER</div>
-
-<div id="ui">
-<div id="scoreboard">
-Score: <span id="score">0</span><br>
-Level: <span id="level">1</span><br>
-Leben: <span id="hp">5</span>
-</div>
-
-<h3>Legende</h3>
-<table>
-<tbody>
-<tr><td style="background:cyan;width:20px;height:20px;"></td><td>Jet (Dreieck)</td></tr>
-<tr><td style="background:yellow;width:20px;height:20px;"></td><td>Schüsse</td></tr>
-<tr><td style="background:gray;width:20px;height:20px;"></td><td>Rocks (6-Ecke)</td></tr>
-<tr><td style="background:orange;width:20px;height:20px;"></td><td>Trümmer (0.5s)</td></tr>
-<tr><td style="background:green;width:20px;height:20px;border-radius:50%;"></td><td>Power-Ups</td></tr>
-<tr><td style="background:red;width:30px;height:30px;"></td><td>Boss</td></tr>
-</tbody>
-</table>
-
-<div class="control-box">
-  <strong>🎮 Steuerung:</strong><br>
-  • <b>PC:</b> Pfeiltasten + Leertaste<br>
-  • <b>Handy:</b> Joystick links + Feuer-Button rechts
-</div>
-
-<h3>🏆 Top 10 Highscores</h3>
-<table id="highscoreTable">
-<thead>
-<tr><th>Platz</th><th>Name</th><th>Score</th></tr>
-</thead>
-<tbody></tbody>
-</table>
-</div>
-
-<div id="levelOverlay"></div>
 
 <script>
 const canvas = document.getElementById("gameCanvas");
@@ -199,98 +240,10 @@ function updateJoystick(touch) {
         dy = (dy / distance) * maxRadius;
     }
     
-    joystickStick.style.transform = `translate(${dx}px, ${dy}px)`;
-    joystickMoveX = dx / maxRadius;
-    joystickMoveY = dy / maxRadius;
-}
-
-const shootBtn = document.getElementById("touchShootBtn");
-shootBtn.addEventListener("touchstart", (e) => {
-    e.preventDefault();
-    keys["Space"] = true;
-    shootBtn.style.background = "rgba(255, 0, 0, 0.9)";
-}, {passive: false});
-
-shootBtn.addEventListener("touchend", (e) => {
-    e.preventDefault();
-    keys["Space"] = false;
-    shootBtn.style.background = "rgba(255, 0, 0, 0.5)";
-}, {passive: false});
-
-
-// ----------------- HELPERS -----------------
-function random(min,max){ return Math.random()*(max-min)+min; }
-
-function showLevelOverlay(){
-    const overlay=document.getElementById("levelOverlay");
-    overlay.innerText="Level "+level;
-    overlay.style.display="block";
-    setTimeout(()=>overlay.style.display="none",1000);
-}
-
-function triggerGameOver(){
-    gameOver = true;
-    document.getElementById("restartBtn").style.display = "block";
-    let playerName = prompt("Game Over! Gib deinen Namen für den Highscore ein:", "Spieler");
-    if(playerName){
-        saveHighScore(playerName, score);
-    }
-}
-
-function spawnRock(){
-    rocks.push({
-        x: random(20, canvas.width - 60),
-        y: -50,
-        r: 25,
-        w: 50,
-        h: 50,
-        hp: getRockHP(level),
-        points: 5,
-        speed: random(2, 3 + level*0.3)
-    });
-    rocksSpawned++;
-}
-
-function explodeRockIntoDebris(cx, cy){
-    const now = Date.now();
-    for(let i = 0; i < 6; i++){
-        let angle = (Math.PI / 3) * i;
-        debris.push({
-            cx: cx,
-            cy: cy,
-            vx: Math.cos(angle) * 3,
-            vy: Math.sin(angle) * 3 + 1,
-            size: 12,
-            angle: angle,
-            createdAt: now,
-            hitJet: false
-        });
-    }
-}
-
-function spawnBoss(){
-    if(!boss){
-        boss = {x:250, y:50, w:100, h:100, hp:getBossHP(level), bullets:[], direction:1, speed:2};
-    }
-}
-
-// ----------------- HIGHSCORE -----------------
-async function loadHighscores() {
-  try {
-    const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
+    joystickStick.style.transform = `translate(${dx}px, ${dy}px)`; joystickMoveX = dx / maxRadius; joystickMoveY = dy / maxRadius; }  const shootBtn = document.getElementById("touchShootBtn"); shootBtn.addEventListener("touchstart", (e) => { e.preventDefault(); keys["Space"] = true; shootBtn.style.background = "rgba(255, 0, 0, 0.9)"; }, {passive: false});  shootBtn.addEventListener("touchend", (e) => { e.preventDefault(); keys["Space"] = false; shootBtn.style.background = "rgba(255, 0, 0, 0.5)"; }, {passive: false});  // ----------------- HELPERS ----------------- function random(min,max){ return Math.random()*(max-min)+min; }  function showLevelOverlay(){ const overlay=document.getElementById("levelOverlay"); overlay.innerText="Level "+level; overlay.style.display="block"; setTimeout(()=>overlay.style.display="none",1000); }  function triggerGameOver(){ gameOver = true; document.getElementById("finalScore").innerText = score; document.getElementById("nameInputSection").style.display = "block"; document.getElementById("gameOverModal").style.display = "block"; loadHighscores(); }  function submitScore(){ const nameInput = document.getElementById("playerNameInput"); const name = nameInput.value.trim() \vert{}\vert{} "Spieler"; saveHighScore(name, score); document.getElementById("nameInputSection").style.display = "none"; }  function spawnRock(){ rocks.push({ x: random(20, canvas.width - 60), y: -50, r: 25, w: 50, h: 50, hp: getRockHP(level), points: 5, speed: random(2, 3 + level*0.3) }); rocksSpawned++; }  function explodeRockIntoDebris(cx, cy){ const now = Date.now(); for(let i = 0; i < 6; i++){ let angle = (Math.PI / 3) * i; debris.push({ cx: cx, cy: cy, vx: Math.cos(angle) * 3, vy: Math.sin(angle) * 3 + 1, size: 12, angle: angle, createdAt: now, hitJet: false }); } }  function spawnBoss(){ if(!boss){ boss = {x:250, y:50, w:100, h:100, hp:getBossHP(level), bullets:[], direction:1, speed:2}; } }  // ----------------- HIGHSCORE ----------------- async function loadHighscores() { try { const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
       headers: { "X-Access-Key": API_KEY }
     });
-    if(!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const data = await response.json();
-    renderHighscoreTable(data.record.highscores || []);
-  } catch (err) {
-    console.error("Highscore laden fehlgeschlagen:", err);
-  }
-}
-
-async function saveHighScore(name, scoreVal) {
-  try {
-    const res = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
+    if(!response.ok) throw new Error(`HTTP error! status: ${response.status}`); const data = await response.json(); renderHighscoreTable(data.record.highscores \vert{}\vert{} []); } catch (err) { console.error("Highscore laden fehlgeschlagen:", err); } }  async function saveHighScore(name, scoreVal) { try { const res = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
       headers: { "X-Access-Key": API_KEY }
     });
     const currentData = await res.json();
@@ -300,27 +253,13 @@ async function saveHighScore(name, scoreVal) {
     highscores.sort((a, b) => b.score - a.score);
     highscores = highscores.slice(0, 10);
 
-    await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", "X-Access-Key": API_KEY },
-      body: JSON.stringify({ highscores: highscores })
-    });
-
-    loadHighscores();
-  } catch (err) {
-    console.error("Speichern fehlgeschlagen:", err);
-  }
-}
-
-function renderHighscoreTable(highscores){
-    const tbody = document.querySelector("#highscoreTable tbody");
-    if(!tbody) return;
-    tbody.innerHTML = "";
-    highscores.forEach((entry, index) => {
-        let tr = document.createElement("tr");
-        tr.innerHTML = `<td>${index + 1}</td><td>${entry.name}</td><td>${entry.score}</td>`;
-        tbody.appendChild(tr);
-    });
+    await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, { method: "PUT", headers: { "Content-Type": "application/json", "X-Access-Key": API_KEY }, body: JSON.stringify({ highscores: highscores }) });  loadHighscores(); } catch (err) { console.error("Speichern fehlgeschlagen:", err); } }  function renderHighscoreTable(highscores){ const createRows = (tbody) => { if(!tbody) return; tbody.innerHTML = ""; highscores.forEach((entry, index) => { let tr = document.createElement("tr"); tr.innerHTML = `<td>${index + 1}</td><td>${entry.name}</td><td>${entry.score}</td>`;
+            tbody.appendChild(tr);
+        });
+    };
+    
+    createRows(document.querySelector("#highscoreTable tbody"));
+    createRows(document.querySelector("#modalHighscoreTable tbody"));
 }
 
 function restartGame(){
@@ -346,7 +285,7 @@ function restartGame(){
     extraGivenThisBossLevel = false;
     powerUpsSpawnedThisLevel = 0;
 
-    document.getElementById("restartBtn").style.display = "none";
+    document.getElementById("gameOverModal").style.display = "none";
     loadHighscores();
 }
 
@@ -590,31 +529,8 @@ function draw(){
         ctx.fillStyle = "orange";
         boss.bullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
     }
-}
 
-// ----------------- FIXED 60 FPS LOOP -----------------
-let lastTime = 0;
-const fps = 60;
-const interval = 1000 / fps;
-
-function loop(timestamp){
-    if(!lastTime) lastTime = timestamp;
-    let elapsed = timestamp - lastTime;
-
-    if (elapsed >= interval) {
-        lastTime = timestamp - (elapsed % interval);
-        update(); 
-        draw(); 
-    }
-
-    if(!gameOver) {
-        requestAnimationFrame(loop);
-    }
-}
-
-// Start
-loadHighscores();
-requestAnimationFrame(loop);
-</script>
-</body>
-</html>
+    // --- Ingame HUD oben links (Gelb/Durchsichtig für Handy) ---
+    ctx.fillStyle = "rgba(255, 255, 0, 0.75)";
+    ctx.font = "bold 20px Arial";
+    ctx.fillText(`HP
