@@ -17,11 +17,11 @@ td { background:#111; }
 #restartBtn { display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); padding:15px 25px; font-size:18px; cursor:pointer; background:green; color:white; border:2px solid white; border-radius:5px; z-index:20; }
 .control-box { margin-top: 10px; padding: 5px; background: #111; border: 1px solid white; font-size: 11px; line-height: 1.3; }
 
-/* --- Mobile Touch Controls --- */
+/* --- Virtueller Joystick & Feuer-Button (Nur Mobil) --- */
 #touchShootBtn {
     position: fixed;
-    bottom: 20px;
-    right: 20px;
+    bottom: 30px;
+    right: 30px;
     width: 90px;
     height: 90px;
     border-radius: 50%;
@@ -30,7 +30,7 @@ td { background:#111; }
     color: white;
     font-size: 18px;
     font-weight: bold;
-    display: none; /* Wird auf Handys eingeblendet */
+    display: none;
     align-items: center;
     justify-content: center;
     z-index: 30;
@@ -41,9 +41,35 @@ td { background:#111; }
     background: rgba(255, 0, 0, 0.8);
 }
 
+#joystickBase {
+    position: fixed;
+    bottom: 30px;
+    left: 30px;
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    display: none;
+    z-index: 30;
+    user-select: none;
+    touch-action: none;
+}
+#joystickStick {
+    position: absolute;
+    top: 30px;
+    left: 30px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.4);
+    border: 2px solid white;
+}
+
 @media (max-width: 900px) {
     #ui { display: none; }
     #touchShootBtn { display: flex; }
+    #joystickBase { display: block; }
 }
 </style>
 </head>
@@ -52,7 +78,9 @@ td { background:#111; }
 <canvas id="gameCanvas" width="600" height="800"></canvas>
 <button id="restartBtn" onclick="restartGame()">Erneut spielen</button>
 
-<!-- Runder Feuer-Button für Handys -->
+<div id="joystickBase">
+    <div id="joystickStick"></div>
+</div>
 <div id="touchShootBtn">FEUER</div>
 
 <div id="ui">
@@ -77,7 +105,7 @@ Leben: <span id="hp">5</span>
 <div class="control-box">
   <strong>🎮 Steuerung:</strong><br>
   • <b>PC:</b> Pfeiltasten + Leertaste<br>
-  • <b>Handy:</b> Mit Finger ziehen & Feuer-Button
+  • <b>Handy:</b> Joystick links + Feuer-Button rechts
 </div>
 
 <h3>🏆 Top 10 Highscores</h3>
@@ -119,49 +147,63 @@ let shootCooldown = 0;
 let gameOver = false;
 let maxLevels = 21;
 
-// Touch-Steuerung: Ziel-Position für den Jet
-let targetX = jet.x;
-let targetY = jet.y;
-let isTouching = false;
+// Joystick Variablen
+let joystickActive = false;
+let joystickMoveX = 0;
+let joystickMoveY = 0;
 
 // ----------------- LEVEL CONFIG -----------------
 function getRocksThisLevel(l){ return 30 + (l-1)*15; }
 function getRockHP(l){ return 3 + (l-1)*1.6; }
 function getBossHP(l){ return 50 + (l-1)*25; }
 
-// ----------------- INPUT (Tastatur & Touch Drag) -----------------
+// ----------------- INPUT -----------------
 document.addEventListener("keydown", e=>keys[e.code]=true);
 document.addEventListener("keyup", e=>keys[e.code]=false);
 
-// Handy Touch-Steuerung direkt auf dem Canvas
-canvas.addEventListener("touchstart", (e) => {
+const joystickBase = document.getElementById("joystickBase");
+const joystickStick = document.getElementById("joystickStick");
+
+joystickBase.addEventListener("touchstart", (e) => {
     e.preventDefault();
-    isTouching = true;
-    updateTouchPos(e);
+    joystickActive = true;
+    updateJoystick(e.touches[0]);
 }, {passive: false});
 
-canvas.addEventListener("touchmove", (e) => {
+joystickBase.addEventListener("touchmove", (e) => {
     e.preventDefault();
-    if(isTouching) updateTouchPos(e);
+    if(joystickActive) updateJoystick(e.touches[0]);
 }, {passive: false});
 
-canvas.addEventListener("touchend", (e) => {
+joystickBase.addEventListener("touchend", (e) => {
     e.preventDefault();
-    isTouching = false;
+    joystickActive = false;
+    joystickMoveX = 0;
+    joystickMoveY = 0;
+    joystickStick.style.transform = `translate(0px, 0px)`;
 }, {passive: false});
 
-function updateTouchPos(e) {
-    const rect = canvas.getBoundingClientRect();
-    const touch = e.touches[0];
-    // Skalierung von Bildschirm-Pixeln zu Canvas-Pixeln (600x800)
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+function updateJoystick(touch) {
+    const rect = joystickBase.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
     
-    targetX = (touch.clientX - rect.left) * scaleX - jet.w / 2;
-    targetY = (touch.clientY - rect.top) * scaleY - jet.h / 2;
+    let dx = touch.clientX - centerX;
+    let dy = touch.clientY - centerY;
+    
+    const maxRadius = 40;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    if (distance > maxRadius) {
+        dx = (dx / distance) * maxRadius;
+        dy = (dy / distance) * maxRadius;
+    }
+    
+    joystickStick.style.transform = `translate(${dx}px, ${dy}px)`;
+    joystickMoveX = dx / maxRadius;
+    joystickMoveY = dy / maxRadius;
 }
 
-// Feuer-Button Logik für Touch
 const shootBtn = document.getElementById("touchShootBtn");
 shootBtn.addEventListener("touchstart", (e) => {
     e.preventDefault();
@@ -288,11 +330,12 @@ function restartGame(){
     gameOver = false;
     rocksSpawned = 0;
     shootCooldown = 0;
-    isTouching = false;
+    joystickActive = false;
+    joystickMoveX = 0;
+    joystickMoveY = 0;
+    joystickStick.style.transform = `translate(0px, 0px)`;
     
     jet = {x:270, y:700, w:60, h:60, speed:6, bullets:[], power:1, hp:5, extraBullets:0};
-    targetX = jet.x;
-    targetY = jet.y;
     rocks = [];
     debris = [];
     powerUps = [];
@@ -305,24 +348,20 @@ function restartGame(){
 
     document.getElementById("restartBtn").style.display = "none";
     loadHighscores();
-    loop();
 }
 
 // ----------------- UPDATE -----------------
 function update(){
     if(gameOver) return;
 
-    // Tastatur-Steuerung (PC)
     if(keys["ArrowLeft"] && jet.x>0) jet.x-=jet.speed;
     if(keys["ArrowRight"] && jet.x<canvas.width-jet.w) jet.x+=jet.speed;
     if(keys["ArrowUp"] && jet.y>0) jet.y-=jet.speed;
     if(keys["ArrowDown"] && jet.y<canvas.height-jet.h) jet.y+=jet.speed;
 
-    // Touch-Steuerung (Handy: Jet gleitet sanft zum Finger)
-    if(isTouching){
-        jet.x += (targetX - jet.x) * 0.2;
-        jet.y += (targetY - jet.y) * 0.2;
-        // Begrenzung im Canvas
+    if(joystickActive){
+        jet.x += joystickMoveX * jet.speed;
+        jet.y += joystickMoveY * jet.speed;
         if(jet.x < 0) jet.x = 0;
         if(jet.x > canvas.width - jet.w) jet.x = canvas.width - jet.w;
         if(jet.y < 0) jet.y = 0;
@@ -553,16 +592,29 @@ function draw(){
     }
 }
 
-// ----------------- LOOP -----------------
-function loop(){
-    update(); 
-    draw(); 
-    if(!gameOver) requestAnimationFrame(loop);
+// ----------------- FIXED 60 FPS LOOP -----------------
+let lastTime = 0;
+const fps = 60;
+const interval = 1000 / fps;
+
+function loop(timestamp){
+    if(!lastTime) lastTime = timestamp;
+    let elapsed = timestamp - lastTime;
+
+    if (elapsed >= interval) {
+        lastTime = timestamp - (elapsed % interval);
+        update(); 
+        draw(); 
+    }
+
+    if(!gameOver) {
+        requestAnimationFrame(loop);
+    }
 }
 
 // Start
 loadHighscores();
-loop();
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
