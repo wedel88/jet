@@ -2,25 +2,97 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Jet Shooter 2D – Dreieck & Sechseck-Trümmer</title>
 <style>
-body { margin:0; overflow:hidden; background:black; color:white; font-family:Arial; }
-#gameCanvas { background:#000; display:block; margin-left:10px; float:left; border:2px solid white; }
-#ui { position:absolute; top:10px; left:620px; width:250px; }
-#scoreboard { margin-bottom:10px; font-size:18px; }
+body { margin:0; overflow:hidden; background:black; color:white; font-family:Arial; touch-action: none; }
+#gameCanvas { background:#000; display:block; margin: 0 auto; border:2px solid white; max-width: 100%; height: auto; }
+#ui { position:absolute; top:10px; right:10px; width:220px; background: rgba(0,0,0,0.8); padding: 5px; border-radius: 5px; }
+#scoreboard { margin-bottom:10px; font-size:16px; }
 #levelOverlay { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:36px; color:yellow; display:none; z-index:10; }
 table { border-collapse: collapse; width:100%; }
-th, td { border:1px solid white; padding:4px; text-align:center; font-size:14px; }
+th, td { border:1px solid white; padding:2px; text-align:center; font-size:12px; }
 th { background:#333; }
 td { background:#111; }
-#restartBtn { display:none; position:absolute; top:50%; left:200px; transform:translateY(-50%); padding:15px 25px; font-size:18px; cursor:pointer; background:green; color:white; border:2px solid white; border-radius:5px; z-index:20; }
-.control-box { margin-top: 15px; padding: 10px; background: #111; border: 1px solid white; font-size: 13px; line-height: 1.4; }
+#restartBtn { display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); padding:15px 25px; font-size:18px; cursor:pointer; background:green; color:white; border:2px solid white; border-radius:5px; z-index:20; }
+.control-box { margin-top: 10px; padding: 5px; background: #111; border: 1px solid white; font-size: 11px; line-height: 1.3; }
+
+/* --- Mobile Touch Controls Styling --- */
+#touchControls {
+    position: fixed;
+    bottom: 10px;
+    left: 0;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 20px;
+    box-sizing: border-box;
+    z-index: 30;
+    user-select: none;
+}
+.dpad-group {
+    display: grid;
+    grid-template-columns: 60px 60px 60px;
+    grid-template-rows: 50px 50px;
+    gap: 5px;
+}
+.touch-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid white;
+    color: white;
+    font-size: 20px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+}
+.touch-btn:active, .touch-btn.active {
+    background: rgba(255, 255, 255, 0.5);
+}
+#btnUp { grid-column: 2; grid-row: 1; }
+#btnLeft { grid-column: 1; grid-row: 2; }
+#btnDown { grid-column: 2; grid-row: 2; }
+#btnRight { grid-column: 3; grid-row: 2; }
+
+.action-group {
+    display: flex;
+    align-items: center;
+}
+#btnShoot {
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    background: rgba(255, 0, 0, 0.4);
+    font-weight: bold;
+}
+#btnShoot:active, #btnShoot.active {
+    background: rgba(255, 0, 0, 0.7);
+}
+
+/* Für kleinere Bildschirme UI anpassen */
+@media (max-width: 900px) {
+    #ui { display: none; } /* Versteckt die rechte Seitenleiste auf Handys, damit das Spiel größer ist */
+}
 </style>
 </head>
 <body>
 
 <canvas id="gameCanvas" width="600" height="800"></canvas>
 <button id="restartBtn" onclick="restartGame()">Erneut spielen</button>
+
+<!-- Onscreen Touch Controls -->
+<div id="touchControls">
+    <div class="dpad-group">
+        <div class="touch-btn" id="btnUp">▲</div>
+        <div class="touch-btn" id="btnLeft">◀</div>
+        <div class="touch-btn" id="btnDown">▼</div>
+        <div class="touch-btn" id="btnRight">▶</div>
+    </div>
+    <div class="action-group">
+        <div class="touch-btn" id="btnShoot">FEUER</div>
+    </div>
+</div>
 
 <div id="ui">
 <div id="scoreboard">
@@ -91,9 +163,37 @@ function getRocksThisLevel(l){ return 30 + (l-1)*15; }
 function getRockHP(l){ return 3 + (l-1)*1.6; }
 function getBossHP(l){ return 50 + (l-1)*25; }
 
-// ----------------- INPUT -----------------
+// ----------------- INPUT (Tastatur & Touch) -----------------
 document.addEventListener("keydown", e=>keys[e.code]=true);
 document.addEventListener("keyup", e=>keys[e.code]=false);
+
+// Hilfsfunktion für Touch-Buttons (Simuliert Tastendrücke)
+function bindTouchButton(id, keyCode) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    
+    el.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        keys[keyCode] = true;
+        el.classList.add("active");
+    }, {passive: false});
+
+    el.addEventListener("touchend", (e) => {
+        e.preventDefault();
+        keys[keyCode] = false;
+        el.classList.remove("active");
+    }, {passive: false});
+    
+    // Fallback für Mausklicks am PC zum Testen
+    el.addEventListener("mousedown", () => { keys[keyCode] = true; el.classList.add("active"); });
+    el.addEventListener("mouseup", () => { keys[keyCode] = false; el.classList.remove("active"); });
+}
+
+bindTouchButton("btnLeft", "ArrowLeft");
+bindTouchButton("btnRight", "ArrowRight");
+bindTouchButton("btnUp", "ArrowUp");
+bindTouchButton("btnDown", "ArrowDown");
+bindTouchButton("btnShoot", "Space");
 
 // ----------------- HELPERS -----------------
 function random(min,max){ return Math.random()*(max-min)+min; }
@@ -105,12 +205,9 @@ function showLevelOverlay(){
     setTimeout(()=>overlay.style.display="none",1000);
 }
 
-// ---- triggerGameOver ----
 function triggerGameOver(){
     gameOver = true;
     document.getElementById("restartBtn").style.display = "block";
-    
-    // Optional: Highscore beim Game Over direkt speichern (falls gewünscht)
     let playerName = prompt("Game Over! Gib deinen Namen für den Highscore ein:", "Spieler");
     if(playerName){
         saveHighScore(playerName, score);
@@ -154,17 +251,14 @@ function spawnBoss(){
     }
 }
 
-// ----------------- HIGHSCORE (Mit X-Access-Key für den Access Key) -----------------
+// ----------------- HIGHSCORE -----------------
 async function loadHighscores() {
   try {
     const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
-      headers: {
-        "X-Access-Key": API_KEY
-      }
+      headers: { "X-Access-Key": API_KEY }
     });
     if(!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const data = await response.json();
-    
     const highscores = data.record.highscores || [];
     renderHighscoreTable(highscores);
   } catch (err) {
@@ -201,6 +295,7 @@ async function saveHighScore(name, scoreVal) {
 
 function renderHighscoreTable(highscores){
     const tbody = document.querySelector("#highscoreTable tbody");
+    if(!tbody) return;
     tbody.innerHTML = "";
     highscores.forEach((entry, index) => {
         let tr = document.createElement("tr");
@@ -452,9 +547,9 @@ function update(){
         levelUp();
     }
 
-    document.getElementById("score").textContent = score;
-    document.getElementById("level").textContent = level;
-    document.getElementById("hp").textContent = Math.max(0, jet.hp);
+    if(document.getElementById("score")) document.getElementById("score").textContent = score;
+    if(document.getElementById("level")) document.getElementById("level").textContent = level;
+    if(document.getElementById("hp")) document.getElementById("hp").textContent = Math.max(0, jet.hp);
 }
 
 function levelUp(){
